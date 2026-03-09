@@ -25,6 +25,14 @@
 
 <body>
 
+    <noscript>
+        <div
+            style="text-align:center;padding:60px 20px;font-family:sans-serif;background:#07070f;color:#8585aa;min-height:100vh;">
+            <p style="font-size:1.1rem;">⚠️ JavaScript está desactivado en tu navegador.</p>
+            <p style="margin-top:8px;">Activa JavaScript para disfrutar de La Cajita TV.</p>
+        </div>
+    </noscript>
+
     <!-- ── HEADER ──────────────────────────────────────────────── -->
     <header>
         <nav>
@@ -102,27 +110,43 @@
     <!-- ── MODAL DE VIDEO ─────────────────────────────────────── -->
     <div id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div id="modal">
-            <div class="modal-header">
-                <h2 id="modal-title"></h2>
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <!-- Hint de rotación: solo visible en móvil portrait -->
-                    <div id="rotate-hint" aria-label="Rotar pantalla para mejor vista" title="Gira el dispositivo">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="4" y="2" width="16" height="20" rx="2" />
-                            <path d="M17 17H7" />
-                        </svg>
-                        <span>Gira el dispositivo</span>
+
+            <!-- ── Zona fija: header + player + descripción ── -->
+            <div class="player-wrap">
+                <div class="modal-header">
+                    <h2 id="modal-title"></h2>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <!-- Hint de rotación: solo visible en móvil portrait -->
+                        <div id="rotate-hint" aria-label="Rotar pantalla para mejor vista" title="Gira el dispositivo">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="4" y="2" width="16" height="20" rx="2" />
+                                <path d="M17 17H7" />
+                            </svg>
+                            <span>Gira el dispositivo</span>
+                        </div>
+                        <button id="modal-close" aria-label="Cerrar">✕</button>
                     </div>
-                    <button id="modal-close" aria-label="Cerrar">✕</button>
                 </div>
+
+                <!-- Player con logo superpuesto -->
+                <div class="player-container">
+                    <div id="modal-player"></div>
+                    <div class="player-logo-overlay" aria-hidden="true">
+                        <img src="imges/102.png" alt="La Cajita TV" />
+                    </div>
+                </div>
+
+                <!-- Descripción debajo del video -->
+                <p id="modal-desc"></p>
             </div>
-            <div id="modal-player"></div>
-            <p id="modal-desc"></p>
+
+            <!-- ── Zona desplazable: lista de episodios ── -->
             <div id="episodes-section" style="display:none">
                 <div class="episodes-title">Episodios</div>
                 <div id="episodes-list"></div>
             </div>
+
         </div>
     </div>
 
