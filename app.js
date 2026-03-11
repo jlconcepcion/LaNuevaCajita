@@ -457,7 +457,7 @@ function playInPlayer(container, ep) {
         const vid = document.createElement('video');
         vid.controls = true; vid.autoplay = true; vid.playsInline = true;
         container.appendChild(vid);
-        if (src.includes('.m3u8') || ep.stream_url) {
+        if (src.includes('.m3u8') || streamSrc) {
             attachHlsOrNative(vid, src);
         } else {
             container.innerHTML = `<iframe src="${src}" allowfullscreen allow="autoplay"></iframe>`;

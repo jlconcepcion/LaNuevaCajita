@@ -21,6 +21,12 @@
 
     <!-- HLS.js para streams en vivo -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
+    <!-- Redirección móvil -->
+    <script>
+        if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+            window.location.href = "https://m.lacajita.tv";
+        }
+    </script>
 </head>
 
 <body>
@@ -108,7 +114,7 @@
     </footer>
 
     <!-- ── MODAL DE VIDEO ─────────────────────────────────────── -->
-    <div id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div id="modal-overlay" role="dialog" aria-modal="true" aria-label="Reproductor de video">
         <div id="modal">
 
             <!-- ── Zona fija: header + player + descripción ── -->

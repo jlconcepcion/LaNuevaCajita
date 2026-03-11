@@ -890,11 +890,30 @@ nav {
 
 /* ── Zona scrollable: lista de episodios ─────────────── */
 #episodes-section {
-    flex: 1;
+    /* Muestra ~3 ítems y luego permite scroll */
+    flex: 0 1 auto;
+    max-height: 330px;
     min-height: 0;
     overflow-y: auto;
     /* scroll suave en iOS */
     -webkit-overflow-scrolling: touch;
+    /* Barra de scroll estilizada */
+    scrollbar-width: thin;
+    scrollbar-color: var(--brand) var(--bg3);
+}
+
+#episodes-section::-webkit-scrollbar {
+    width: 5px;
+}
+
+#episodes-section::-webkit-scrollbar-track {
+    background: var(--bg3);
+    border-radius: 4px;
+}
+
+#episodes-section::-webkit-scrollbar-thumb {
+    background: var(--brand);
+    border-radius: 4px;
 }
 
 .episodes-title {
