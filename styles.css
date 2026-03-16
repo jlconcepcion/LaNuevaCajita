@@ -780,7 +780,7 @@ nav {
     border-radius: var(--radius-lg);
     width: 100%;
     max-width: 920px;
-    max-height: 90vh;
+    max-height: 95vh;
     /* flex column: zona fija arriba, lista scrollable abajo */
     display: flex;
     flex-direction: column;
@@ -865,6 +865,7 @@ nav {
     position: relative;
     width: 100%;
     aspect-ratio: 16/9;
+    max-height: 46vh;   /* nunca ocupa más de ~la mitad del viewport */
     background: #000;
     margin: 16px 0 0;
     overflow: hidden;
@@ -891,9 +892,9 @@ nav {
 /* ── Zona scrollable: lista de episodios ─────────────── */
 #episodes-section {
     /* Muestra ~3 ítems y luego permite scroll */
-    flex: 0 1 auto;
-    max-height: 330px;
-    min-height: 0;
+    flex: 1 1 auto;
+    max-height: 400px;
+    min-height: 220px;  /* garantiza al menos ~3 episodios visibles */
     overflow-y: auto;
     /* scroll suave en iOS */
     -webkit-overflow-scrolling: touch;
@@ -1369,4 +1370,120 @@ nav {
     #rotate-hint {
         display: none !important;
     }
+}
+
+/* ============================================================
+   PiP LIVE TV WIDGET
+============================================================ */
+@keyframes pip-slide-up {
+    from { opacity: 0; transform: translate(-50%, calc(-50% + 30px)) scale(.95); }
+    to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+#pip-widget {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1100;
+    width: 640px;
+    background: var(--bg2);
+    border: 1px solid var(--brand);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 8px 40px rgba(124, 58, 237, .35), 0 2px 12px rgba(0,0,0,.6);
+    animation: pip-slide-up .35s cubic-bezier(.22,1,.36,1) both;
+}
+
+#pip-widget[hidden] {
+    display: none;
+}
+
+.pip-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 10px;
+    background: rgba(124, 58, 237, .15);
+    border-bottom: 1px solid var(--border);
+}
+
+.pip-badge {
+    font-size: .62rem;
+    font-weight: 800;
+    color: #ff4444;
+    letter-spacing: .06em;
+    white-space: nowrap;
+    animation: pulse 1.5s infinite;
+}
+
+.pip-title {
+    flex: 1;
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pip-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.pip-btn {
+    background: rgba(255,255,255,.08);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--muted);
+    transition: background var(--transition), color var(--transition);
+    padding: 0;
+}
+
+.pip-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke-width: 2;
+}
+
+.pip-btn:hover {
+    background: var(--card-hover);
+    color: var(--text);
+}
+
+.pip-player-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16/9;
+    background: #000;
+}
+
+#pip-player {
+    position: absolute;
+    inset: 0;
+}
+
+#pip-player video,
+#pip-player iframe {
+    width: 100%;
+    height: 100%;
+    display: block;
+    border: none;
+}
+
+/* Móvil: widget más pequeño */
+@media (max-width: 500px) {
+    #pip-widget {
+        width: 230px;
+        border-radius: 10px;
+    }
+    .pip-title { font-size: .72rem; }
 }
