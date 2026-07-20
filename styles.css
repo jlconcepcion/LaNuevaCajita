@@ -1366,13 +1366,16 @@ nav {
     /* El player-container (con logo) ocupa el espacio restante en player-wrap */
     #modal:has(.episodes-open) .player-container {
         flex: 1;
+        display: flex;
+        flex-direction: column;
         min-height: 0;
     }
 
     #modal:has(.episodes-open) #modal-player {
         aspect-ratio: unset;
-        height: 100%;
         margin: 0;
+        min-height: 0;
+        flex: 1;
     }
 
     /* Descripción compacta debajo del player en landscape */
