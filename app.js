@@ -1,7 +1,7 @@
-// Redirección móvil
-if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
-    window.location.href = "https://m.lacajita.tv";
-}
+// Redirecci\u00f3n m\u00f3vil (comentada porque la app principal es responsive)
+// if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+//     window.location.href = "https://m.lacajita.tv";
+// }
 
 /* ============================================================
    CONFIG
