@@ -6,7 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="La Cajita TV — Programas, noticias, deportes y TV en vivo." />
     <meta http-equiv="X-Frame-Options" content="SAMEORIGIN" />
-    <meta http-equiv="Content-Security-Policy" content="frame-ancestors 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https:; media-src 'self' https: blob:; worker-src 'self' blob:; frame-src https:; frame-ancestors 'self';" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta http-equiv="Permissions-Policy" content="camera=(), microphone=(), geolocation=()" />
     <title>La Cajita TV</title>
 
     <!-- Open Graph / Social -->
@@ -35,14 +37,10 @@
     <!-- Estilos -->
     <link rel="stylesheet" href="styles.css" />
 
-    <!-- HLS.js para streams en vivo (versión fijada) -->
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
-    <!-- Redirección móvil -->
-    <script>
-        if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
-            window.location.href = "https://m.lacajita.tv";
-        }
-    </script>
+    <!-- HLS.js para streams en vivo (versión fijada con SRI) -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js" 
+            integrity="sha384-w6Gb3fXHb5e1LUYa/hYA5Q41bEDglN5ZPCG7Jvnoo8/X90oGnlPqBlBJCe38mEMm" 
+            crossorigin="anonymous"></script>
 </head>
 
 <body>

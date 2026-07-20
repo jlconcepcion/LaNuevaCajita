@@ -1,3 +1,8 @@
+// Redirección móvil
+if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+    window.location.href = "https://m.lacajita.tv";
+}
+
 /* ============================================================
    CONFIG
 ============================================================ */
@@ -44,9 +49,13 @@ function formatDuration(sec) {
 }
 
 function esc(str) {
-    const d = document.createElement('div');
-    d.textContent = str;
-    return d.innerHTML;
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 function debounce(fn, ms) {
