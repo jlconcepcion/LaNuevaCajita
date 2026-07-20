@@ -20,6 +20,10 @@ let feedHasMore = false; // ¿quedan más ítems en la API?
 let isFetchingMore = false; // bloquea doble-click en "Cargar más"
 let hlsInstance = null;
 let pipHlsInstance = null; // HLS del widget PiP
+let lastFocus = null;      // Para restaurar foco al cerrar modal
+let trapHandler = null;    // Handler del focus trap del modal
+let currentModalItem = null; // Ítem abierto actualmente en el modal
+let toastTimer = null;       // Timer de la notificación toast
 
 // Carousel state
 let carouselSlides = [];
@@ -55,6 +59,110 @@ function cleanUrl(url) {
     return url ? url.replace(/\\/g, '/') : '';
 }
 
+/** Valida que una URL sea segura (solo http/https) */
+function isValidUrl(u) {
+    return typeof u === 'string' && /^https?:\/\//i.test(u);
+}
+
+/**
+ * Sanitiza un ítem de la API: garantiza tipos correctos y valida URLs.
+ * Previene XSS por URLs javascript: o datos malformados.
+ */
+function sanitizeItem(item) {
+    if (!item || typeof item !== 'object') return null;
+    return {
+        id:            String(item.id ?? ''),
+        title:         String(item.title ?? 'Sin título').slice(0, 300),
+        description:   String(item.description ?? '').slice(0, 3000),
+        thumbnail:     isValidUrl(item.thumbnail)  ? item.thumbnail  : '',
+        stream_url:    isValidUrl(item.stream_url) ? item.stream_url : '',
+        file_url:      isValidUrl(item.file_url)   ? item.file_url   : '',
+        embed_url:     isValidUrl(item.embed_url)  ? item.embed_url  : '',
+        type:          String(item.type || 'video'),
+        is_series:     Boolean(item.is_series),
+        duration:      Number(item.duration)       || 0,
+        episode_count: Number(item.episode_count)  || 0,
+    };
+}
+
+/** Sanitiza una categoría completa del feed */
+function sanitizeCat(cat) {
+    return {
+        ...cat,
+        content: (cat.content || []).map(sanitizeItem).filter(Boolean),
+    };
+}
+
+/* ============================================================
+   FAVORITOS — localStorage
+============================================================ */
+const FAV_KEY = 'lctv_favorites';
+
+function getFavorites() {
+    try { return JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); }
+    catch (_) { return []; }
+}
+
+function saveFavorites(favs) {
+    try { localStorage.setItem(FAV_KEY, JSON.stringify(favs)); } catch (_) {}
+}
+
+function isFavorite(id) {
+    return getFavorites().some(f => f.id === id);
+}
+
+/**
+ * Agrega o elimina un ítem de favoritos.
+ * @returns {boolean} true si fue añadido, false si fue eliminado.
+ */
+function toggleFavorite(item) {
+    const favs = getFavorites();
+    const idx  = favs.findIndex(f => f.id === item.id);
+    if (idx >= 0) { favs.splice(idx, 1); }
+    else { favs.push(item); }
+    saveFavorites(favs);
+    return idx < 0;
+}
+
+/* ============================================================
+   COMPARTIR
+============================================================ */
+function getShareUrl(item) {
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.hash   = '';
+    url.searchParams.set('play', item.id);
+    return url.toString();
+}
+
+async function shareItem(item) {
+    const url = getShareUrl(item);
+    if (navigator.share) {
+        try {
+            await navigator.share({ title: item.title, text: item.description || item.title, url });
+        } catch (_) { /* usuario canceló */ }
+    } else {
+        try {
+            await navigator.clipboard.writeText(url);
+            showToast('¡Enlace copiado al portapapeles! 🔗');
+        } catch (_) {
+            showToast('No se pudo copiar el enlace.');
+        }
+    }
+}
+
+/* ============================================================
+   TOAST
+============================================================ */
+function showToast(msg, duration = 3000) {
+    const toast = $('toast');
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.classList.add('visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('visible'), duration);
+}
+
 /* ============================================================
    FETCH
 ============================================================ */
@@ -78,6 +186,27 @@ async function fetchEpisodes(seriesId) {
     const res = await fetch(url);
     if (!res.ok) throw new Error('Episodes error ' + res.status);
     return res.json();
+}
+
+/* ============================================================
+   CACHE — sessionStorage con TTL de 5 minutos
+============================================================ */
+const CACHE_TTL = 5 * 60 * 1000;
+
+async function fetchFeedCached(sort, offset) {
+    const key = `lctv_feed_${sort}_${offset}`;
+    try {
+        const raw = sessionStorage.getItem(key);
+        if (raw) {
+            const { data, ts } = JSON.parse(raw);
+            if (Date.now() - ts < CACHE_TTL) return data;
+        }
+    } catch (_) { /* sessionStorage no disponible */ }
+    const data = await fetchFeed(sort, offset);
+    try {
+        sessionStorage.setItem(key, JSON.stringify({ data, ts: Date.now() }));
+    } catch (_) { /* cuota excedida, continuar sin caché */ }
+    return data;
 }
 
 /* ============================================================
@@ -128,7 +257,7 @@ function computeFeedHasMore() {
 async function init() {
     showGridLoading();
     try {
-        const data = await fetchFeed(currentSort, 0);
+        const data = await fetchFeedCached(currentSort, 0);
 
         // Brand color / nombre
         if (data.branding?.brand_color) {
@@ -140,7 +269,7 @@ async function init() {
             document.title = data.branding.church_name;
         }
 
-        allCategories = data.categories || [];
+        allCategories = (data.categories || []).map(sanitizeCat);
         fetchOffset = CONFIG.pageSize;            // próximo offset
         feedHasMore = allCategories.some(c => c.has_more);
 
@@ -153,6 +282,15 @@ async function init() {
         buildCarousel();
         buildTabs();
         renderGrid();
+
+        // Deep-link: ?play=<id> → abrir modal automáticamente
+        const playId = new URLSearchParams(window.location.search).get('play');
+        if (playId) {
+            for (const cat of allCategories) {
+                const found = cat.content.find(i => i.id === playId);
+                if (found) { openModal(found); break; }
+            }
+        }
 
         // Lanzar el widget PiP con un ligero retraso
         setTimeout(initLivePip, 800);
@@ -173,8 +311,8 @@ async function loadMoreFromAPI() {
     showLoadMoreSpinner(true);
 
     try {
-        const data = await fetchFeed(currentSort, fetchOffset);
-        const newCats = data.categories || [];
+        const data = await fetchFeedCached(currentSort, fetchOffset);
+        const newCats = (data.categories || []).map(sanitizeCat);
 
         mergeCategories(newCats);
         fetchOffset += CONFIG.pageSize;
@@ -293,8 +431,15 @@ function buildTabs() {
     const container = $('category-tabs');
     container.innerHTML = '';
 
-    const ALL = { id: 'all', name: 'Todo' };
-    [ALL, ...allCategories].forEach(cat => {
+    const favs = getFavorites();
+    const ALL  = { id: 'all', name: 'Todo' };
+    const FAV  = { id: 'favorites', name: `♥ Favoritos${favs.length ? ` (${favs.length})` : ''}` };
+    const tabs = [ALL, ...(favs.length ? [FAV] : []), ...allCategories];
+
+    // Si estamos en favoritos pero ya no hay ninguno, regresar a "all"
+    if (activeCatId === 'favorites' && !favs.length) activeCatId = 'all';
+
+    tabs.forEach(cat => {
         const btn = document.createElement('button');
         btn.className = 'tab-btn' + (cat.id === activeCatId ? ' active' : '');
         btn.textContent = cat.name;
@@ -320,7 +465,9 @@ function getVisibleItems() {
     if (searchQuery) return [];
 
     let items = [];
-    if (activeCatId === 'all') {
+    if (activeCatId === 'favorites') {
+        items = getFavorites();
+    } else if (activeCatId === 'all') {
         const seen = new Set();
         for (const cat of allCategories) {
             for (const item of cat.content) {
@@ -340,6 +487,10 @@ function getVisibleItems() {
 
 function getCategoryName() {
     if (activeCatId === 'all') return 'Todo el contenido';
+    if (activeCatId === 'favorites') {
+        const n = getFavorites().length;
+        return `♥ Favoritos (${n})`;
+    }
     return allCategories.find(c => c.id === activeCatId)?.name ?? 'Contenido';
 }
 
@@ -367,15 +518,33 @@ function renderGrid(searchResults) {
 
     grid.innerHTML = items.map(item => cardHTML(item)).join('');
 
+    // Abrir modal al clicar tarjeta
     grid.querySelectorAll('.card').forEach(card => {
         const handler = () => {
-            const id = card.dataset.id;
+            const id   = card.dataset.id;
             const item = items.find(i => i.id === id);
             if (item) openModal(item);
         };
         card.addEventListener('click', handler);
         card.addEventListener('keydown', e => {
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
+        });
+    });
+
+    // Toggle favorito sin abrir modal
+    grid.querySelectorAll('.fav-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id   = btn.dataset.favId;
+            const item = items.find(i => i.id === id);
+            if (!item) return;
+            const added = toggleFavorite(item);
+            btn.classList.toggle('active', added);
+            btn.setAttribute('aria-label', added ? 'Quitar de favoritos' : 'Agregar a favoritos');
+            const svg = btn.querySelector('svg');
+            if (svg) svg.style.fill = added ? 'currentColor' : 'none';
+            showToast(added ? '\u2665 A\u00f1adido a favoritos' : 'Eliminado de favoritos');
+            buildTabs();
+            if (activeCatId === 'favorites') renderGrid();
         });
     });
 
@@ -388,19 +557,21 @@ function renderGrid(searchResults) {
 }
 
 function cardHTML(item) {
-    const isLive = item.type === 'live_feed';
+    const isLive   = item.type === 'live_feed';
     const isSeries = item.is_series;
-    const dur = formatDuration(item.duration);
+    const dur      = formatDuration(item.duration);
+    const isFav    = isFavorite(item.id);
 
     let badge = '';
-    if (isLive) badge = `<span class="badge badge-live">EN VIVO</span>`;
+    if (isLive)   badge = `<span class="badge badge-live">EN VIVO</span>`;
     if (isSeries) badge = `<span class="badge badge-series">SERIE</span>`;
 
     const epCount = isSeries && item.episode_count
         ? `<span class="ep-count">${item.episode_count} ep.</span>` : '';
 
     return `
-<article class="card" data-id="${esc(item.id)}" tabindex="0" role="button" aria-label="${esc(item.title)}">
+<div class="card-wrap">
+<button class="card" data-id="${esc(item.id)}" aria-label="${esc(item.title)}">
   <div class="card-thumb">
     <img src="${esc(item.thumbnail)}" alt="${esc(item.title)}" loading="lazy"
          onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 640 360%22><rect width=%22640%22 height=%22360%22 fill=%22%231a1a2e%22/><text x=%2250%%25%22 y=%2250%%25%22 fill=%22%238585aa%22 font-size=%2248%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22>📺</text></svg>'" />
@@ -415,7 +586,14 @@ function cardHTML(item) {
     <div class="card-title">${esc(item.title)}</div>
     <div class="card-meta">${dur ? dur : (isSeries ? 'Serie' : isLive ? 'En Vivo' : 'Video')}</div>
   </div>
-</article>`;
+</button>
+<button class="fav-btn${isFav ? ' active' : ''}" data-fav-id="${esc(item.id)}"
+        aria-label="${isFav ? 'Quitar de favoritos' : 'Agregar a favoritos'}" title="Favoritos">
+  <svg viewBox="0 0 24 24">
+    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+  </svg>
+</button>
+</div>`;
 }
 
 function showGridLoading() {
@@ -430,50 +608,100 @@ function showGridLoading() {
    PiP LIVE TV WIDGET
 ============================================================ */
 const PIP_DEFAULT = {
-    title:      'Emfravision',
-    stream_url: 'https://mlb.essastream.com:8081/emfravision/index.m3u8',
+    title: 'Emfravision',
+    stream_url: 'https://edge.essastream.com/emfravision/index.m3u8',
 };
 
+function findLiveChannel(nameSubstring) {
+    const lower = nameSubstring.toLowerCase();
+    for (const cat of allCategories) {
+        for (const i of cat.content) {
+            if (i.type === 'live_feed' && i.title.toLowerCase().includes(lower) && i.stream_url) {
+                return i;
+            }
+        }
+    }
+    return null;
+}
+
 function initLivePip() {
-    const widget   = $('pip-widget');
-    const player   = $('pip-player');
-    const titleEl  = $('pip-title');
+    const widget = $('pip-widget');
+    const player = $('pip-player');
+    const titleEl = $('pip-title');
     if (!widget || !player) return;
 
-    // Buscar en el feed si existe el canal; si no, usar el default
-    let liveItem = null;
-    for (const cat of allCategories) {
-        liveItem = cat.content.find(i => i.type === 'live_feed' &&
-            cleanUrl(i.stream_url) === PIP_DEFAULT.stream_url);
-        if (liveItem) break;
+    // Buscar canales por prioridad usando el nombre
+    const emfravision = findLiveChannel('emfravision');
+    const olmTv       = findLiveChannel('olm tv') || findLiveChannel('olmtv');
+    
+    // Si no hay ninguno de los dos, buscar cualquier canal en vivo
+    let anyLive = null;
+    if (!emfravision && !olmTv) {
+        for (const cat of allCategories) {
+            anyLive = cat.content.find(i => i.type === 'live_feed' && i.stream_url);
+            if (anyLive) break;
+        }
     }
 
-    const streamUrl = PIP_DEFAULT.stream_url;
-    const title     = liveItem?.title || PIP_DEFAULT.title;
+    // Lista de canales a intentar reproducir (del más prioritario al menos)
+    const channelsToTry = [emfravision, olmTv, anyLive, PIP_DEFAULT].filter(Boolean);
+    let currentTryIndex = 0;
 
-    titleEl.textContent = title;
+    function tryPlayChannel() {
+        if (currentTryIndex >= channelsToTry.length) {
+            widget.hidden = true; // Ningún canal funcionó
+            return;
+        }
 
-    // Montar el stream HLS
-    if (pipHlsInstance) { pipHlsInstance.destroy(); pipHlsInstance = null; }
-    player.innerHTML = '';
+        const activeItem = channelsToTry[currentTryIndex];
+        const streamUrl  = activeItem.stream_url;
+        titleEl.textContent = activeItem.title;
 
-    const vid = document.createElement('video');
-    vid.muted     = true;  // autoplay requiere muted en muchos navegadores
-    vid.autoplay  = true;
-    vid.playsInline = true;
-    player.appendChild(vid);
+        if (pipHlsInstance) { pipHlsInstance.destroy(); pipHlsInstance = null; }
+        player.innerHTML = '';
 
-    if (Hls.isSupported()) {
-        pipHlsInstance = new Hls({ lowLatencyMode: true });
-        pipHlsInstance.loadSource(streamUrl);
-        pipHlsInstance.attachMedia(vid);
-        pipHlsInstance.on(Hls.Events.MANIFEST_PARSED, () => vid.play().catch(() => {}));
-    } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
-        vid.src = streamUrl;
-        vid.play().catch(() => {});
+        const vid = document.createElement('video');
+        vid.muted = true;  // autoplay requiere muted
+        vid.autoplay = true;
+        vid.playsInline = true;
+        player.appendChild(vid);
+
+        let errorHandled = false;
+        const handlePlaybackError = () => {
+            if (errorHandled) return;
+            errorHandled = true;
+            console.warn(`PiP: Falló ${activeItem.title}, intentando fallback...`);
+            currentTryIndex++;
+            tryPlayChannel();
+        };
+
+        if (Hls.isSupported()) {
+            pipHlsInstance = new Hls({ lowLatencyMode: true });
+            
+            // Manejar errores de HLS (404, CORS, etc)
+            pipHlsInstance.on(Hls.Events.ERROR, (event, data) => {
+                if (data.fatal) {
+                    if (data.type === Hls.ErrorTypes.NETWORK_ERROR || data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                        handlePlaybackError();
+                    } else {
+                        pipHlsInstance.destroy();
+                    }
+                }
+            });
+
+            pipHlsInstance.loadSource(streamUrl);
+            pipHlsInstance.attachMedia(vid);
+            pipHlsInstance.on(Hls.Events.MANIFEST_PARSED, () => vid.play().catch(handlePlaybackError));
+        } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
+            vid.src = streamUrl;
+            vid.addEventListener('error', handlePlaybackError);
+            vid.play().catch(handlePlaybackError);
+        }
+
+        widget.hidden = false;
     }
 
-    widget.hidden = false;
+    tryPlayChannel();
 }
 
 function closePip() {
@@ -537,8 +765,14 @@ function playInPlayer(container, ep) {
 ============================================================ */
 function openModal(item) {
     const overlay = $('modal-overlay');
-    const player = $('modal-player');
-    const epSec = $('episodes-section');
+    const player  = $('modal-player');
+    const epSec   = $('episodes-section');
+
+    // Guardar referencia al ítem actual (para compartir)
+    currentModalItem = item;
+
+    // Guardar foco actual para restaurarlo al cerrar
+    lastFocus = document.activeElement;
 
     // Cerrar el PiP para evitar audio doble
     closePip();
@@ -565,6 +799,27 @@ function openModal(item) {
 
     overlay.classList.add('open');
     document.body.style.overflow = 'hidden';
+
+    // Mover foco al botón de cerrar
+    requestAnimationFrame(() => $('modal-close').focus());
+
+    // Instalar focus trap dentro del modal
+    const modal = $('modal');
+    trapHandler = (e) => {
+        if (e.key !== 'Tab') return;
+        const focusable = Array.from(modal.querySelectorAll(
+            'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )).filter(el => el.offsetParent !== null);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last  = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+            if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+        } else {
+            if (document.activeElement === last)  { e.preventDefault(); first.focus(); }
+        }
+    };
+    modal.addEventListener('keydown', trapHandler);
 }
 
 async function loadEpisodes(seriesId) {
@@ -582,10 +837,11 @@ async function loadEpisodes(seriesId) {
             return;
         }
         epList.innerHTML = eps.map((ep, i) => `
-  <div class="ep-item" data-embed="${esc(ep.embed_url || '')}"
+  <div class="ep-item" tabindex="0" role="button"
+       data-embed="${esc(ep.embed_url || '')}"
        data-file="${esc(ep.file_url || '')}" data-stream="${esc(ep.stream_url || '')}"
        data-title="${esc(ep.title || '')}" data-thumb="${esc(ep.thumbnail || '')}"
-       data-desc="${esc(ep.description || '')}">
+       data-desc="${esc(ep.description || '')}" aria-label="${esc(ep.title || '')}">
     <div class="ep-thumb">
       <img src="${esc(ep.thumbnail || '')}" alt="${esc(ep.title)}" loading="lazy" onerror="this.style.opacity=0" />
     </div>
@@ -598,12 +854,16 @@ async function loadEpisodes(seriesId) {
 
         epList.querySelectorAll('.ep-item').forEach(el => {
             const handler = () => {
+                // Resaltar episodio activo
+                epList.querySelectorAll('.ep-item').forEach(e => e.classList.remove('ep-active'));
+                el.classList.add('ep-active');
+
                 const ep = {
-                    title: el.dataset.title,
-                    embed_url: el.dataset.embed,
-                    file_url: el.dataset.file,
+                    title:      el.dataset.title,
+                    embed_url:  el.dataset.embed,
+                    file_url:   el.dataset.file,
                     stream_url: el.dataset.stream,
-                    thumbnail: el.dataset.thumb,
+                    thumbnail:  el.dataset.thumb,
                 };
                 $('modal-title').textContent = ep.title;
                 $('modal-desc').textContent = el.dataset.desc || '';
@@ -625,8 +885,14 @@ async function loadEpisodes(seriesId) {
 }
 
 function closeModal() {
+    const modal = $('modal');
     $('modal-overlay').classList.remove('open');
     document.body.style.overflow = '';
+    // Desinstalar focus trap
+    if (trapHandler) { modal.removeEventListener('keydown', trapHandler); trapHandler = null; }
+    // Restaurar foco previo
+    if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
+    lastFocus = null;
     setTimeout(() => {
         $('modal-player').innerHTML = '';
         if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
@@ -663,8 +929,8 @@ async function onSortChange(sort) {
     feedHasMore = false;
     showGridLoading();
     try {
-        const data = await fetchFeed(sort, 0);
-        allCategories = data.categories || [];
+        const data = await fetchFeedCached(sort, 0);
+        allCategories = (data.categories || []).map(sanitizeCat);
         fetchOffset = CONFIG.pageSize;
         feedHasMore = allCategories.some(c => c.has_more);
 
@@ -702,6 +968,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Búsqueda, orden y modal
     $('search-input').addEventListener('input', e => doSearch(e.target.value));
     $('sort-select').addEventListener('change', e => onSortChange(e.target.value));
+    $('modal-share').addEventListener('click', () => {
+        if (currentModalItem) shareItem(currentModalItem);
+    });
     $('modal-close').addEventListener('click', closeModal);
     $('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
@@ -713,20 +982,29 @@ document.addEventListener('DOMContentLoaded', () => {
     $('pip-close').addEventListener('click', closePip);
     $('pip-expand').addEventListener('click', () => {
         // Buscar el item live en el feed para abrirlo en el modal completo
-        let liveItem = null;
+        let defaultItem = null;
+        let anyLiveItem = null;
         for (const cat of allCategories) {
-            liveItem = cat.content.find(i => i.type === 'live_feed' &&
-                cleanUrl(i.stream_url) === PIP_DEFAULT.stream_url);
-            if (liveItem) break;
+            for (const i of cat.content) {
+                if (i.type === 'live_feed') {
+                    if (!anyLiveItem) anyLiveItem = i;
+                    if (cleanUrl(i.stream_url) === PIP_DEFAULT.stream_url) {
+                        defaultItem = i;
+                        break;
+                    }
+                }
+            }
+            if (defaultItem) break;
         }
-        closePip();
-        openModal(liveItem || {
-            title:      PIP_DEFAULT.title,
+        const activeItem = defaultItem || anyLiveItem || {
+            title: PIP_DEFAULT.title,
             stream_url: PIP_DEFAULT.stream_url,
-            type:       'live_feed',
+            type: 'live_feed',
             description: '',
-            is_series:  false,
-        });
+            is_series: false,
+        };
+        closePip();
+        openModal(activeItem);
     });
 
     // START

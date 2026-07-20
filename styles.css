@@ -32,6 +32,19 @@ html {
     scroll-behavior: smooth;
 }
 
+/* Oculto visualmente pero accesible para lectores de pantalla */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 body {
     font-family: 'Inter', sans-serif;
     background: var(--bg);
@@ -548,9 +561,11 @@ nav {
     margin-bottom: 32px;
 }
 
-/* ============================================================
-   CARDS
-============================================================ */
+/* Wrapper de tarjeta — necesario para el botón de favorito sin anidar botones */
+.card-wrap {
+    position: relative;
+}
+
 .card {
     background: var(--card);
     border-radius: var(--radius);
@@ -558,9 +573,17 @@ nav {
     cursor: pointer;
     transition: transform var(--transition), box-shadow var(--transition), background var(--transition);
     position: relative;
+    /* Reset estilos nativos de <button> */
+    border: none;
+    padding: 0;
+    font: inherit;
+    text-align: left;
+    width: 100%;
+    display: block;
+    color: inherit;
 }
 
-.card:hover {
+.card-wrap:hover .card {
     transform: translateY(-5px) scale(1.02);
     box-shadow: 0 16px 48px rgba(124, 58, 237, .25);
     background: var(--card-hover);
@@ -581,7 +604,7 @@ nav {
     transition: transform 0.4s ease;
 }
 
-.card:hover .card-thumb img {
+.card-wrap:hover .card-thumb img {
     transform: scale(1.07);
 }
 
@@ -654,7 +677,7 @@ nav {
     transition: opacity var(--transition);
 }
 
-.card:hover .play-overlay {
+.card-wrap:hover .play-overlay {
     opacity: 1;
 }
 
@@ -830,14 +853,28 @@ nav {
 
 .modal-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 20px 24px 0;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    min-height: 56px;
 }
 
 #modal-title {
-    display: none;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.35;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+    -webkit-box-orient: vertical;
 }
 
 #modal-close {
@@ -865,9 +902,9 @@ nav {
     position: relative;
     width: 100%;
     aspect-ratio: 16/9;
-    max-height: 46vh;   /* nunca ocupa más de ~la mitad del viewport */
+    max-height: 46vh;
     background: #000;
-    margin: 16px 0 0;
+    margin: 0;
     overflow: hidden;
 }
 
@@ -945,6 +982,12 @@ nav {
 .ep-item:hover {
     border-color: var(--brand);
     background: var(--card);
+}
+
+.ep-item.ep-active {
+    border-color: var(--brand-light);
+    background: var(--card);
+    box-shadow: 0 0 0 2px var(--brand-dim);
 }
 
 .ep-thumb {
@@ -1250,14 +1293,15 @@ nav {
         overflow: hidden;
     }
 
-    /* Cabecera del modal más pequeña */
+    /* Cabecera del modal más pequeña en landscape */
     .modal-header {
-        padding: 8px 12px 0;
+        padding: 8px 12px;
+        min-height: 44px;
         flex-shrink: 0;
     }
 
     #modal-title {
-        font-size: 1rem;
+        font-size: .85rem;
     }
 
     #modal-close {
@@ -1479,11 +1523,131 @@ nav {
     border: none;
 }
 
-/* Móvil: widget más pequeño */
+/* M\u00f3vil: widget m\u00e1s peque\u00f1o */
 @media (max-width: 500px) {
     #pip-widget {
         width: 230px;
         border-radius: 10px;
     }
     .pip-title { font-size: .72rem; }
+}
+
+/* ============================================================
+   FAVORITO \u2014 bot\u00f3n coraz\u00f3n en tarjeta
+============================================================ */
+.fav-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 5;
+    background: rgba(0, 0, 0, 0.55);
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    color: rgba(255, 255, 255, 0.85);
+    opacity: 0;
+    transition: opacity var(--transition), background var(--transition), transform 0.2s ease;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+/* Visible al hover del wrapper o cuando est\u00e1 activo */
+.card-wrap:hover .fav-btn,
+.fav-btn.active {
+    opacity: 1;
+}
+
+.fav-btn:hover {
+    background: rgba(0, 0, 0, 0.8);
+    transform: scale(1.15);
+}
+
+.fav-btn.active {
+    color: #ef4444;
+}
+
+.fav-btn svg {
+    width: 16px;
+    height: 16px;
+    transition: fill 0.2s ease, transform 0.3s cubic-bezier(.34, 1.56, .64, 1);
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.fav-btn.active svg {
+    fill: currentColor;
+    transform: scale(1.25);
+}
+
+/* En m\u00f3vil siempre visible */
+@media (max-width: 720px) {
+    .fav-btn { opacity: 1; }
+}
+
+/* ============================================================
+   COMPARTIR \u2014 bot\u00f3n en modal
+============================================================ */
+#modal-share {
+    flex-shrink: 0;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--muted);
+    padding: 0;
+    transition: background var(--transition), color var(--transition);
+}
+
+#modal-share:hover {
+    background: var(--card-hover);
+    color: var(--brand-light);
+}
+
+#modal-share svg {
+    width: 15px;
+    height: 15px;
+}
+
+/* ============================================================
+   TOAST \u2014 notificaci\u00f3n flotante temporal
+============================================================ */
+#toast {
+    position: fixed;
+    bottom: 36px;
+    left: 50%;
+    transform: translateX(-50%) translateY(16px);
+    z-index: 9999;
+    background: rgba(22, 22, 42, 0.94);
+    color: var(--text);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 24px;
+    padding: 10px 22px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.28s ease, transform 0.28s cubic-bezier(.22, 1, .36, 1);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    white-space: nowrap;
+    box-shadow: 0 4px 28px rgba(0, 0, 0, 0.55);
+}
+
+#toast.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
 }
