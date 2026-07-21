@@ -323,19 +323,23 @@ async function init() {
         renderGrid();
 
         // Deep-link: ?play=<id> → abrir modal automáticamente
+        let isModalOpenedViaLink = false;
         const playId = new URLSearchParams(window.location.search).get('play');
         if (playId) {
             for (const cat of allCategories) {
                 const found = cat.content.find(i => i.id === playId);
                 if (found) {
                     openModal(found);
+                    isModalOpenedViaLink = true;
                     break;
                 }
             }
         }
 
-        // Lanzar el widget PiP con un ligero retraso
-        setTimeout(initLivePip, 800);
+        // Lanzar el widget PiP con un ligero retraso SOLO si no abrimos un enlace
+        if (!isModalOpenedViaLink) {
+            setTimeout(initLivePip, 800);
+        }
     } catch (e) {
         $('content-grid').innerHTML =
             `<div class="state-msg">⚠️ Error al cargar contenido. Intenta refrescar la página.</div>`;
@@ -675,6 +679,9 @@ function findLiveChannel(nameSubstring) {
 }
 
 function initLivePip() {
+    // Si el modal está abierto, abortar el arranque del PiP
+    if ($('modal-overlay').classList.contains('open')) return;
+
     const widget = $('pip-widget');
     const player = $('pip-player');
     const titleEl = $('pip-title');
