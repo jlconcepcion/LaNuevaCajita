@@ -1,7 +1,17 @@
-// Redirecci\u00f3n m\u00f3vil (comentada porque la app principal es responsive)
+// Redirección móvil (comentada porque la app principal es responsive)
 // if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
 //     window.location.href = "https://m.lacajita.tv";
 // }
+
+// Registro del Service Worker para PWA
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker
+            .register('./sw.js')
+            .then(reg => console.log('SW registrado con éxito: ', reg.scope))
+            .catch(err => console.error('Error al registrar SW: ', err));
+    });
+}
 
 /* ============================================================
    CONFIG
@@ -9,7 +19,7 @@
 const CONFIG = {
     churchId: 141,
     apiBase: 'https://tvappbuilder.com/API/V1/embed',
-    pageSize: 12,           // ítems por petición API por categoría
+    pageSize: 12, // ítems por petición API por categoría
     carouselInterval: 6000, // ms
 };
 
@@ -20,15 +30,15 @@ let allCategories = [];
 let activeCatId = 'all';
 let currentSort = 'newest';
 let searchQuery = '';
-let fetchOffset = 0;     // offset actual (para el próximo fetch)
+let fetchOffset = 0; // offset actual (para el próximo fetch)
 let feedHasMore = false; // ¿quedan más ítems en la API?
 let isFetchingMore = false; // bloquea doble-click en "Cargar más"
 let hlsInstance = null;
 let pipHlsInstance = null; // HLS del widget PiP
-let lastFocus = null;      // Para restaurar foco al cerrar modal
-let trapHandler = null;    // Handler del focus trap del modal
+let lastFocus = null; // Para restaurar foco al cerrar modal
+let trapHandler = null; // Handler del focus trap del modal
 let currentModalItem = null; // Ítem abierto actualmente en el modal
-let toastTimer = null;       // Timer de la notificación toast
+let toastTimer = null; // Timer de la notificación toast
 
 // Carousel state
 let carouselSlides = [];
@@ -42,7 +52,9 @@ const $ = id => document.getElementById(id);
 
 function formatDuration(sec) {
     if (!sec) return '';
-    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    const h = Math.floor(sec / 3600),
+        m = Math.floor((sec % 3600) / 60),
+        s = sec % 60;
     return h
         ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
         : `${m}:${String(s).padStart(2, '0')}`;
@@ -60,7 +72,10 @@ function esc(str) {
 
 function debounce(fn, ms) {
     let t;
-    return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+    return (...a) => {
+        clearTimeout(t);
+        t = setTimeout(() => fn(...a), ms);
+    };
 }
 
 /** Normaliza barras invertidas escapadas en URLs de la API */
@@ -80,17 +95,17 @@ function isValidUrl(u) {
 function sanitizeItem(item) {
     if (!item || typeof item !== 'object') return null;
     return {
-        id:            String(item.id ?? ''),
-        title:         String(item.title ?? 'Sin título').slice(0, 300),
-        description:   String(item.description ?? '').slice(0, 3000),
-        thumbnail:     isValidUrl(item.thumbnail)  ? item.thumbnail  : '',
-        stream_url:    isValidUrl(item.stream_url) ? item.stream_url : '',
-        file_url:      isValidUrl(item.file_url)   ? item.file_url   : '',
-        embed_url:     isValidUrl(item.embed_url)  ? item.embed_url  : '',
-        type:          String(item.type || 'video'),
-        is_series:     Boolean(item.is_series),
-        duration:      Number(item.duration)       || 0,
-        episode_count: Number(item.episode_count)  || 0,
+        id: String(item.id ?? ''),
+        title: String(item.title ?? 'Sin título').slice(0, 300),
+        description: String(item.description ?? '').slice(0, 3000),
+        thumbnail: isValidUrl(item.thumbnail) ? item.thumbnail : '',
+        stream_url: isValidUrl(item.stream_url) ? item.stream_url : '',
+        file_url: isValidUrl(item.file_url) ? item.file_url : '',
+        embed_url: isValidUrl(item.embed_url) ? item.embed_url : '',
+        type: String(item.type || 'video'),
+        is_series: Boolean(item.is_series),
+        duration: Number(item.duration) || 0,
+        episode_count: Number(item.episode_count) || 0,
     };
 }
 
@@ -108,12 +123,17 @@ function sanitizeCat(cat) {
 const FAV_KEY = 'lctv_favorites';
 
 function getFavorites() {
-    try { return JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); }
-    catch (_) { return []; }
+    try {
+        return JSON.parse(localStorage.getItem(FAV_KEY) || '[]');
+    } catch (_) {
+        return [];
+    }
 }
 
 function saveFavorites(favs) {
-    try { localStorage.setItem(FAV_KEY, JSON.stringify(favs)); } catch (_) {}
+    try {
+        localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+    } catch (_) {}
 }
 
 function isFavorite(id) {
@@ -126,9 +146,12 @@ function isFavorite(id) {
  */
 function toggleFavorite(item) {
     const favs = getFavorites();
-    const idx  = favs.findIndex(f => f.id === item.id);
-    if (idx >= 0) { favs.splice(idx, 1); }
-    else { favs.push(item); }
+    const idx = favs.findIndex(f => f.id === item.id);
+    if (idx >= 0) {
+        favs.splice(idx, 1);
+    } else {
+        favs.push(item);
+    }
     saveFavorites(favs);
     return idx < 0;
 }
@@ -139,7 +162,7 @@ function toggleFavorite(item) {
 function getShareUrl(item) {
     const url = new URL(window.location.href);
     url.search = '';
-    url.hash   = '';
+    url.hash = '';
     url.searchParams.set('play', item.id);
     return url.toString();
 }
@@ -149,7 +172,9 @@ async function shareItem(item) {
     if (navigator.share) {
         try {
             await navigator.share({ title: item.title, text: item.description || item.title, url });
-        } catch (_) { /* usuario canceló */ }
+        } catch (_) {
+            /* usuario canceló */
+        }
     } else {
         try {
             await navigator.clipboard.writeText(url);
@@ -176,7 +201,8 @@ function showToast(msg, duration = 3000) {
    FETCH
 ============================================================ */
 async function fetchFeed(sort = 'newest', offset = 0) {
-    const url = `${CONFIG.apiBase}/feed.php?church=${CONFIG.churchId}` +
+    const url =
+        `${CONFIG.apiBase}/feed.php?church=${CONFIG.churchId}` +
         `&limit=${CONFIG.pageSize}&include_live=true&sort=${sort}&offset=${offset}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('API error ' + res.status);
@@ -210,11 +236,15 @@ async function fetchFeedCached(sort, offset) {
             const { data, ts } = JSON.parse(raw);
             if (Date.now() - ts < CACHE_TTL) return data;
         }
-    } catch (_) { /* sessionStorage no disponible */ }
+    } catch (_) {
+        /* sessionStorage no disponible */
+    }
     const data = await fetchFeed(sort, offset);
     try {
         sessionStorage.setItem(key, JSON.stringify({ data, ts: Date.now() }));
-    } catch (_) { /* cuota excedida, continuar sin caché */ }
+    } catch (_) {
+        /* cuota excedida, continuar sin caché */
+    }
     return data;
 }
 
@@ -279,7 +309,7 @@ async function init() {
         }
 
         allCategories = (data.categories || []).map(sanitizeCat);
-        fetchOffset = CONFIG.pageSize;            // próximo offset
+        fetchOffset = CONFIG.pageSize; // próximo offset
         feedHasMore = allCategories.some(c => c.has_more);
 
         // Carousel: primer ítem con thumbnail de cada categoría
@@ -297,13 +327,15 @@ async function init() {
         if (playId) {
             for (const cat of allCategories) {
                 const found = cat.content.find(i => i.id === playId);
-                if (found) { openModal(found); break; }
+                if (found) {
+                    openModal(found);
+                    break;
+                }
             }
         }
 
         // Lanzar el widget PiP con un ligero retraso
         setTimeout(initLivePip, 800);
-
     } catch (e) {
         $('content-grid').innerHTML =
             `<div class="state-msg">⚠️ Error al cargar contenido. Intenta refrescar la página.</div>`;
@@ -441,8 +473,8 @@ function buildTabs() {
     container.innerHTML = '';
 
     const favs = getFavorites();
-    const ALL  = { id: 'all', name: 'Todo' };
-    const FAV  = { id: 'favorites', name: `♥ Favoritos${favs.length ? ` (${favs.length})` : ''}` };
+    const ALL = { id: 'all', name: 'Todo' };
+    const FAV = { id: 'favorites', name: `♥ Favoritos${favs.length ? ` (${favs.length})` : ''}` };
     const tabs = [ALL, ...(favs.length ? [FAV] : []), ...allCategories];
 
     // Si estamos en favoritos pero ya no hay ninguno, regresar a "all"
@@ -480,7 +512,10 @@ function getVisibleItems() {
         const seen = new Set();
         for (const cat of allCategories) {
             for (const item of cat.content) {
-                if (!seen.has(item.id)) { seen.add(item.id); items.push(item); }
+                if (!seen.has(item.id)) {
+                    seen.add(item.id);
+                    items.push(item);
+                }
             }
         }
     } else {
@@ -512,9 +547,10 @@ function renderGrid(searchResults) {
 
     // Heading
     if (searchQuery) {
-        heading.textContent = searchResults !== undefined
-            ? `Resultados para "${searchQuery}" (${items.length})`
-            : `Buscando "${searchQuery}"…`;
+        heading.textContent =
+            searchResults !== undefined
+                ? `Resultados para "${searchQuery}" (${items.length})`
+                : `Buscando "${searchQuery}"…`;
     } else {
         heading.textContent = getCategoryName();
     }
@@ -530,20 +566,23 @@ function renderGrid(searchResults) {
     // Abrir modal al clicar tarjeta
     grid.querySelectorAll('.card').forEach(card => {
         const handler = () => {
-            const id   = card.dataset.id;
+            const id = card.dataset.id;
             const item = items.find(i => i.id === id);
             if (item) openModal(item);
         };
         card.addEventListener('click', handler);
         card.addEventListener('keydown', e => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handler();
+            }
         });
     });
 
     // Toggle favorito sin abrir modal
     grid.querySelectorAll('.fav-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const id   = btn.dataset.favId;
+            const id = btn.dataset.favId;
             const item = items.find(i => i.id === id);
             if (!item) return;
             const added = toggleFavorite(item);
@@ -566,17 +605,19 @@ function renderGrid(searchResults) {
 }
 
 function cardHTML(item) {
-    const isLive   = item.type === 'live_feed';
+    const isLive = item.type === 'live_feed';
     const isSeries = item.is_series;
-    const dur      = formatDuration(item.duration);
-    const isFav    = isFavorite(item.id);
+    const dur = formatDuration(item.duration);
+    const isFav = isFavorite(item.id);
 
     let badge = '';
-    if (isLive)   badge = `<span class="badge badge-live">EN VIVO</span>`;
+    if (isLive) badge = `<span class="badge badge-live">EN VIVO</span>`;
     if (isSeries) badge = `<span class="badge badge-series">SERIE</span>`;
 
-    const epCount = isSeries && item.episode_count
-        ? `<span class="ep-count">${item.episode_count} ep.</span>` : '';
+    const epCount =
+        isSeries && item.episode_count
+            ? `<span class="ep-count">${item.episode_count} ep.</span>`
+            : '';
 
     return `
 <div class="card-wrap">
@@ -593,7 +634,7 @@ function cardHTML(item) {
   </div>
   <div class="card-info">
     <div class="card-title">${esc(item.title)}</div>
-    <div class="card-meta">${dur ? dur : (isSeries ? 'Serie' : isLive ? 'En Vivo' : 'Video')}</div>
+    <div class="card-meta">${dur ? dur : isSeries ? 'Serie' : isLive ? 'En Vivo' : 'Video'}</div>
   </div>
 </button>
 <button class="fav-btn${isFav ? ' active' : ''}" data-fav-id="${esc(item.id)}"
@@ -641,8 +682,8 @@ function initLivePip() {
 
     // Buscar canales por prioridad usando el nombre
     const emfravision = findLiveChannel('emfravision');
-    const olmTv       = findLiveChannel('olm tv') || findLiveChannel('olmtv');
-    
+    const olmTv = findLiveChannel('olm tv') || findLiveChannel('olmtv');
+
     // Si no hay ninguno de los dos, buscar cualquier canal en vivo
     let anyLive = null;
     if (!emfravision && !olmTv) {
@@ -663,14 +704,17 @@ function initLivePip() {
         }
 
         const activeItem = channelsToTry[currentTryIndex];
-        const streamUrl  = activeItem.stream_url;
+        const streamUrl = activeItem.stream_url;
         titleEl.textContent = activeItem.title;
 
-        if (pipHlsInstance) { pipHlsInstance.destroy(); pipHlsInstance = null; }
+        if (pipHlsInstance) {
+            pipHlsInstance.destroy();
+            pipHlsInstance = null;
+        }
         player.innerHTML = '';
 
         const vid = document.createElement('video');
-        vid.muted = true;  // autoplay requiere muted
+        vid.muted = true; // autoplay requiere muted
         vid.autoplay = true;
         vid.playsInline = true;
         player.appendChild(vid);
@@ -686,11 +730,14 @@ function initLivePip() {
 
         if (Hls.isSupported()) {
             pipHlsInstance = new Hls({ lowLatencyMode: true });
-            
+
             // Manejar errores de HLS (404, CORS, etc)
             pipHlsInstance.on(Hls.Events.ERROR, (event, data) => {
                 if (data.fatal) {
-                    if (data.type === Hls.ErrorTypes.NETWORK_ERROR || data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                    if (
+                        data.type === Hls.ErrorTypes.NETWORK_ERROR ||
+                        data.type === Hls.ErrorTypes.MEDIA_ERROR
+                    ) {
                         handlePlaybackError();
                     } else {
                         pipHlsInstance.destroy();
@@ -700,7 +747,9 @@ function initLivePip() {
 
             pipHlsInstance.loadSource(streamUrl);
             pipHlsInstance.attachMedia(vid);
-            pipHlsInstance.on(Hls.Events.MANIFEST_PARSED, () => vid.play().catch(handlePlaybackError));
+            pipHlsInstance.on(Hls.Events.MANIFEST_PARSED, () =>
+                vid.play().catch(handlePlaybackError)
+            );
         } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
             vid.src = streamUrl;
             vid.addEventListener('error', handlePlaybackError);
@@ -715,7 +764,10 @@ function initLivePip() {
 
 function closePip() {
     const widget = $('pip-widget');
-    if (pipHlsInstance) { pipHlsInstance.destroy(); pipHlsInstance = null; }
+    if (pipHlsInstance) {
+        pipHlsInstance.destroy();
+        pipHlsInstance = null;
+    }
     $('pip-player').innerHTML = '';
     if (widget) widget.hidden = true;
 }
@@ -728,19 +780,21 @@ function attachHlsOrNative(videoEl, url) {
         hlsInstance = new Hls();
         hlsInstance.loadSource(url);
         hlsInstance.attachMedia(videoEl);
-        hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => videoEl.play().catch(() => { }));
+        hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => videoEl.play().catch(() => {}));
     } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
         videoEl.src = url;
-        videoEl.play().catch(() => { });
+        videoEl.play().catch(() => {});
     } else {
-        videoEl.parentElement.innerHTML =
-            `<div class="state-msg">Tu navegador no soporta HLS.</div>`;
+        videoEl.parentElement.innerHTML = `<div class="state-msg">Tu navegador no soporta HLS.</div>`;
     }
 }
 
 function playInPlayer(container, ep) {
     container.innerHTML = '';
-    if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+    if (hlsInstance) {
+        hlsInstance.destroy();
+        hlsInstance = null;
+    }
 
     if (ep.embed_url) {
         container.innerHTML = `<iframe src="${ep.embed_url}" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture"></iframe>`;
@@ -753,7 +807,9 @@ function playInPlayer(container, ep) {
 
     if (src) {
         const vid = document.createElement('video');
-        vid.controls = true; vid.autoplay = true; vid.playsInline = true;
+        vid.controls = true;
+        vid.autoplay = true;
+        vid.playsInline = true;
         container.appendChild(vid);
         if (src.includes('.m3u8') || streamSrc) {
             attachHlsOrNative(vid, src);
@@ -774,8 +830,8 @@ function playInPlayer(container, ep) {
 ============================================================ */
 function openModal(item) {
     const overlay = $('modal-overlay');
-    const player  = $('modal-player');
-    const epSec   = $('episodes-section');
+    const player = $('modal-player');
+    const epSec = $('episodes-section');
 
     // Guardar referencia al ítem actual (para compartir)
     currentModalItem = item;
@@ -793,7 +849,10 @@ function openModal(item) {
     epSec.style.display = 'none';
     epSec.classList.remove('episodes-open');
     $('episodes-list').innerHTML = '';
-    if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+    if (hlsInstance) {
+        hlsInstance.destroy();
+        hlsInstance = null;
+    }
 
     if (item.is_series) {
         player.innerHTML = `
@@ -814,18 +873,26 @@ function openModal(item) {
 
     // Instalar focus trap dentro del modal
     const modal = $('modal');
-    trapHandler = (e) => {
+    trapHandler = e => {
         if (e.key !== 'Tab') return;
-        const focusable = Array.from(modal.querySelectorAll(
-            'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        )).filter(el => el.offsetParent !== null);
+        const focusable = Array.from(
+            modal.querySelectorAll(
+                'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+            )
+        ).filter(el => el.offsetParent !== null);
         if (!focusable.length) return;
         const first = focusable[0];
-        const last  = focusable[focusable.length - 1];
+        const last = focusable[focusable.length - 1];
         if (e.shiftKey) {
-            if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+            if (document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            }
         } else {
-            if (document.activeElement === last)  { e.preventDefault(); first.focus(); }
+            if (document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
         }
     };
     modal.addEventListener('keydown', trapHandler);
@@ -845,7 +912,9 @@ async function loadEpisodes(seriesId) {
             epList.innerHTML = `<div class="ep-loading">Sin episodios disponibles.</div>`;
             return;
         }
-        epList.innerHTML = eps.map((ep, i) => `
+        epList.innerHTML = eps
+            .map(
+                (ep, i) => `
   <div class="ep-item" tabindex="0" role="button"
        data-embed="${esc(ep.embed_url || '')}"
        data-file="${esc(ep.file_url || '')}" data-stream="${esc(ep.stream_url || '')}"
@@ -859,7 +928,9 @@ async function loadEpisodes(seriesId) {
       <div class="ep-title">${esc(ep.title)}</div>
       <div class="ep-desc">${esc(ep.description || '')}</div>
     </div>
-  </div>`).join('');
+  </div>`
+            )
+            .join('');
 
         epList.querySelectorAll('.ep-item').forEach(el => {
             const handler = () => {
@@ -868,11 +939,11 @@ async function loadEpisodes(seriesId) {
                 el.classList.add('ep-active');
 
                 const ep = {
-                    title:      el.dataset.title,
-                    embed_url:  el.dataset.embed,
-                    file_url:   el.dataset.file,
+                    title: el.dataset.title,
+                    embed_url: el.dataset.embed,
+                    file_url: el.dataset.file,
                     stream_url: el.dataset.stream,
-                    thumbnail:  el.dataset.thumb,
+                    thumbnail: el.dataset.thumb,
                 };
                 $('modal-title').textContent = ep.title;
                 $('modal-desc').textContent = el.dataset.desc || '';
@@ -881,12 +952,14 @@ async function loadEpisodes(seriesId) {
             };
             el.addEventListener('click', handler);
             el.addEventListener('keydown', e => {
-                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handler();
+                }
             });
         });
 
         epList.querySelector('.ep-item')?.click();
-
     } catch (e) {
         epList.innerHTML = `<div class="ep-loading">Error al cargar episodios.</div>`;
         console.error(e);
@@ -898,20 +971,26 @@ function closeModal() {
     $('modal-overlay').classList.remove('open');
     document.body.style.overflow = '';
     // Desinstalar focus trap
-    if (trapHandler) { modal.removeEventListener('keydown', trapHandler); trapHandler = null; }
+    if (trapHandler) {
+        modal.removeEventListener('keydown', trapHandler);
+        trapHandler = null;
+    }
     // Restaurar foco previo
     if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
     lastFocus = null;
     setTimeout(() => {
         $('modal-player').innerHTML = '';
-        if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+        if (hlsInstance) {
+            hlsInstance.destroy();
+            hlsInstance = null;
+        }
     }, 300);
 }
 
 /* ============================================================
    SEARCH
 ============================================================ */
-const doSearch = debounce(async (q) => {
+const doSearch = debounce(async q => {
     searchQuery = q.trim();
 
     if (!searchQuery) {
@@ -954,10 +1033,15 @@ async function onSortChange(sort) {
    EVENTS — dentro de DOMContentLoaded para seguridad
 ============================================================ */
 document.addEventListener('DOMContentLoaded', () => {
-
     // Carousel arrows
-    $('carousel-prev').addEventListener('click', () => { goToSlide(carouselIndex - 1); startCarouselTimer(); });
-    $('carousel-next').addEventListener('click', () => { goToSlide(carouselIndex + 1); startCarouselTimer(); });
+    $('carousel-prev').addEventListener('click', () => {
+        goToSlide(carouselIndex - 1);
+        startCarouselTimer();
+    });
+    $('carousel-next').addEventListener('click', () => {
+        goToSlide(carouselIndex + 1);
+        startCarouselTimer();
+    });
 
     // Pausa al hacer hover
     $('hero-carousel').addEventListener('mouseenter', () => {
@@ -968,11 +1052,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Swipe táctil — touchStartX en scope local
     let touchStartX = 0;
-    $('hero-carousel').addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, { passive: true });
-    $('hero-carousel').addEventListener('touchend', e => {
-        const dx = e.changedTouches[0].clientX - touchStartX;
-        if (Math.abs(dx) > 40) { goToSlide(carouselIndex + (dx < 0 ? 1 : -1)); startCarouselTimer(); }
-    }, { passive: true });
+    $('hero-carousel').addEventListener(
+        'touchstart',
+        e => {
+            touchStartX = e.touches[0].clientX;
+        },
+        { passive: true }
+    );
+    $('hero-carousel').addEventListener(
+        'touchend',
+        e => {
+            const dx = e.changedTouches[0].clientX - touchStartX;
+            if (Math.abs(dx) > 40) {
+                goToSlide(carouselIndex + (dx < 0 ? 1 : -1));
+                startCarouselTimer();
+            }
+        },
+        { passive: true }
+    );
 
     // Búsqueda, orden y modal
     $('search-input').addEventListener('input', e => doSearch(e.target.value));
@@ -981,8 +1078,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentModalItem) shareItem(currentModalItem);
     });
     $('modal-close').addEventListener('click', closeModal);
-    $('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+    $('modal-overlay').addEventListener('click', e => {
+        if (e.target === $('modal-overlay')) closeModal();
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') closeModal();
+    });
 
     // Cargar más — paginación real con API
     $('load-more-btn').addEventListener('click', loadMoreFromAPI);
@@ -1005,13 +1106,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (defaultItem) break;
         }
-        const activeItem = defaultItem || anyLiveItem || {
-            title: PIP_DEFAULT.title,
-            stream_url: PIP_DEFAULT.stream_url,
-            type: 'live_feed',
-            description: '',
-            is_series: false,
-        };
+        const activeItem = defaultItem ||
+            anyLiveItem || {
+                title: PIP_DEFAULT.title,
+                stream_url: PIP_DEFAULT.stream_url,
+                type: 'live_feed',
+                description: '',
+                is_series: false,
+            };
         closePip();
         openModal(activeItem);
     });

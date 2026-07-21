@@ -1,0 +1,21 @@
+{
+    "name": "La Cajita TV",
+    "short_name": "La Cajita",
+    "description": "Programas, noticias, deportes y TV en vivo.",
+    "start_url": "/?source=pwa",
+    "display": "standalone",
+    "background_color": "#07070f",
+    "theme_color": "#07070f",
+    "icons": [
+        {
+            "src": "images/102.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "images/102.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}

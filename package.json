@@ -1,24 +1,30 @@
 {
-  "name": "nuevacajita",
-  "version": "1.0.0",
-  "description": "",
-  "main": "app.js",
-  "scripts": {
-    "dev": "npx serve . --listen 3000",
-    "lint": "npx eslint app.js",
-    "format": "npx prettier --write .",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/jlconcepcion/LaNuevaCajita.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/jlconcepcion/LaNuevaCajita/issues"
-  },
-  "homepage": "https://github.com/jlconcepcion/LaNuevaCajita#readme"
+    "name": "nuevacajita",
+    "version": "1.0.0",
+    "description": "",
+    "main": "app.js",
+    "scripts": {
+        "dev": "npx serve . --listen 3000",
+        "lint": "eslint . --ext .js",
+        "format": "prettier --write .",
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/jlconcepcion/LaNuevaCajita.git"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "type": "commonjs",
+    "bugs": {
+        "url": "https://github.com/jlconcepcion/LaNuevaCajita/issues"
+    },
+    "homepage": "https://github.com/jlconcepcion/LaNuevaCajita#readme",
+    "devDependencies": {
+        "eslint": "^10.7.0",
+        "eslint-config-prettier": "^10.1.8",
+        "eslint-plugin-prettier": "^5.5.6",
+        "prettier": "^3.9.6"
+    }
 }
